@@ -7,23 +7,28 @@ from sympy import randprime, gcd, mod_inverse
 
 # ---------- Math utils ----------
 def egcd(a: int, b: int) -> Tuple[int, int, int]:
+    # Extended Euclidean Algorithm
     if b == 0: 
         return a, 1, 0
     g, x1, y1 = egcd(b, a % b)
     return g, y1, x1 - (a // b) * y1
 
 def modinv(a: int, m: int) -> int:
-    # You can use sympy.mod_inverse OR the egcd above
-    return mod_inverse(a, m)  # replace with custom if you want: (egcd(a,m)[1] % m)
+    # Modular inverse of a mod m
+    # Uses sympy's mod_inverse (safe/fast) instead of custom egcd
+    return mod_inverse(a, m)
 
 def modexp(base: int, exp: int, mod: int) -> int:
+    # Fast modular exponentiation
     return pow(base, exp, mod)
 
 # ---------- Encoding helpers ----------
 def bytes_to_int(b: bytes) -> int:
+    # Convert bytes -> integer for RSA math
     return int.from_bytes(b, byteorder="big")
 
 def int_to_bytes(x: int, length: int | None = None) -> bytes:
+    # Convert integer -> bytes
     # auto-size if length not provided
     if length is None:
         length = (x.bit_length() + 7) // 8 or 1
@@ -32,47 +37,50 @@ def int_to_bytes(x: int, length: int | None = None) -> bytes:
 # ---------- RSA core ----------
 @dataclass
 class RSAKeyPair:
-    n: int
-    e: int
-    d: int
+    n: int  # modulus
+    e: int  # public exponent
+    d: int  # private exponent
 
 def generate_keypair(bits: int = 1024, e: int = 65537) -> RSAKeyPair:
-    # pick primes so that gcd(e, phi)=1
+    # Generate RSA keypair
     half = bits // 2
-    # quick-and-clean prime selection
     while True:
+        # Pick two random primes of ~half the size
         p = randprime(2**(half-1), 2**half)
         q = randprime(2**(half-1), 2**half)
-        if p == q:
+        if p == q:  # ensure distinct primes
             continue
         n = p * q
-        phi = (p - 1) * (q - 1)
-        if gcd(e, phi) == 1:
-            d = modinv(e, phi)
+        phi = (p - 1) * (q - 1)  # Euler's totient
+        if gcd(e, phi) == 1:  # ensure e is coprime to phi
+            d = modinv(e, phi)  # private exponent
             return RSAKeyPair(n=n, e=e, d=d)
 
 def encrypt_int(m: int, pub_n: int, pub_e: int) -> int:
+    # Encrypt integer message with public key
     if m >= pub_n:
         raise ValueError("Message integer must be < modulus n. Use chunking/encoding.")
     return modexp(m, pub_e, pub_n)
 
 def decrypt_int(c: int, priv_n: int, priv_d: int) -> int:
+    # Decrypt integer ciphertext with private key
     return modexp(c, priv_d, priv_n)
 
 # user-facing helpers (bytes <-> RSA int)
 def encrypt_bytes(msg: bytes, kp: RSAKeyPair) -> int:
+    # Encrypt byte string
     m = bytes_to_int(msg)
     return encrypt_int(m, kp.n, kp.e)
 
 def decrypt_bytes(cipher_int: int, kp: RSAKeyPair) -> bytes:
+    # Decrypt back to bytes
     m = decrypt_int(cipher_int, kp.n, kp.d)
-    # pad to full byte length of modulus to preserve leading zeros if you want
     return int_to_bytes(m)
 
 # ---------- Demo ----------
 if __name__ == "__main__":
     # 1) keygen
-    kp = generate_keypair(bits=1024)  # use 2048+ for anything non-demo
+    kp = generate_keypair(bits=2048)  # use 2048+ for real applications
     print("n bits:", kp.n.bit_length())
 
     # 2) message
@@ -86,5 +94,6 @@ if __name__ == "__main__":
     print("cipher (int):", c)
     print("recovered   :", out)
 
+    # sanity check
     assert out == msg, "Decryption failed"
     print("OK ✅")
